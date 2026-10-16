@@ -72,6 +72,42 @@ describe('Task Endpoints (PR #1: Creation, Listing, Validation)', () => {
       expect(response.body.details).toContain('Field "title" must be a string.');
     });
 
+    it('should accept a title with exactly 100 characters', async () => {
+      const title100 = 'x'.repeat(100);
+      const response = await request(app)
+        .post('/tasks')
+        .send({ title: title100 });
+
+      expect(response.status).toBe(201);
+      expect(response.body.title).toBe(title100);
+    });
+
+    it('should accept a description with exactly 500 characters', async () => {
+      const desc500 = 'y'.repeat(500);
+      const response = await request(app)
+        .post('/tasks')
+        .send({
+          title: 'Valid Title',
+          description: desc500
+        });
+
+      expect(response.status).toBe(201);
+      expect(response.body.description).toBe(desc500);
+    });
+
+    it('should return 400 if description is not a string', async () => {
+      const response = await request(app)
+        .post('/tasks')
+        .send({
+          title: 'Valid Title',
+          description: 12345
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('ValidationError');
+      expect(response.body.details).toContain('Field "description" must be a string if provided.');
+    });
+
     it('should return 400 if title exceeds 100 characters', async () => {
       const response = await request(app)
         .post('/tasks')
@@ -120,6 +156,19 @@ describe('Task Endpoints (PR #1: Creation, Listing, Validation)', () => {
       expect(response.body.error).toBe('ValidationError');
       expect(response.body.details[0]).toContain('Field "priority" must be one of');
     });
+
+    it('should return 400 with clean JSON error when request body contains malformed JSON', async () => {
+      const response = await request(app)
+        .post('/tasks')
+        .set('Content-Type', 'application/json')
+        .send('{"title": "incomplete json');
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({
+        error: 'BadRequest',
+        message: 'Malformed JSON payload'
+      });
+    });
   });
 
   describe('GET /tasks', () => {
@@ -166,6 +215,44 @@ describe('Task Endpoints (PR #1: Creation, Listing, Validation)', () => {
       expect(response.body.count).toBe(1);
       expect(response.body.tasks[0].title).toBe('Task High');
       expect(response.body.tasks[0].priority).toBe('high');
+    });
+
+    it('should filter tasks by combined status and priority', async () => {
+      await request(app).post('/tasks').send({ title: 'Task 1', status: 'in_progress', priority: 'high' });
+      await request(app).post('/tasks').send({ title: 'Task 2', status: 'in_progress', priority: 'low' });
+      await request(app).post('/tasks').send({ title: 'Task 3', status: 'completed', priority: 'high' });
+
+      const response = await request(app).get('/tasks?status=in_progress&priority=high');
+
+      expect(response.status).toBe(200);
+      expect(response.body.count).toBe(1);
+      expect(response.body.tasks[0].title).toBe('Task 1');
+      expect(response.body.tasks[0].status).toBe('in_progress');
+      expect(response.body.tasks[0].priority).toBe('high');
+    });
+
+    it('should return 400 when filtering with an invalid status query parameter', async () => {
+      const response = await request(app).get('/tasks?status=bogus');
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('ValidationError');
+      expect(response.body.details[0]).toContain('Query parameter "status" must be one of');
+    });
+
+    it('should return 400 when filtering with an invalid priority query parameter', async () => {
+      const response = await request(app).get('/tasks?priority=super_urgent');
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('ValidationError');
+      expect(response.body.details[0]).toContain('Query parameter "priority" must be one of');
+    });
+
+    it('should return 400 when query parameter is passed as an array', async () => {
+      const response = await request(app).get('/tasks?status=pending&status=completed');
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('ValidationError');
+      expect(response.body.details[0]).toContain('Query parameter "status" must be one of');
     });
   });
 });

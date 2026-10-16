@@ -53,3 +53,31 @@ export function validateCreateTask(req: Request, res: Response, next: NextFuncti
 
   next();
 }
+
+export function validateListTasks(req: Request, res: Response, next: NextFunction): void {
+  const { status, priority } = req.query;
+  const errors: string[] = [];
+
+  if (status !== undefined) {
+    if (typeof status !== 'string' || !ALLOWED_STATUSES.includes(status as TaskStatus)) {
+      errors.push(`Query parameter "status" must be one of: ${ALLOWED_STATUSES.join(', ')}.`);
+    }
+  }
+
+  if (priority !== undefined) {
+    if (typeof priority !== 'string' || !ALLOWED_PRIORITIES.includes(priority as TaskPriority)) {
+      errors.push(`Query parameter "priority" must be one of: ${ALLOWED_PRIORITIES.join(', ')}.`);
+    }
+  }
+
+  if (errors.length > 0) {
+    res.status(400).json({
+      error: 'ValidationError',
+      message: 'Invalid query parameters',
+      details: errors
+    });
+    return;
+  }
+
+  next();
+}

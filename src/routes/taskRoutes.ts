@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { taskController } from '../controllers/taskController';
-import { validateCreateTask } from '../middleware/validateTask';
+import { validateCreateTask, validateListTasks } from '../middleware/validateTask';
 
 export const taskRouter = Router();
 
 taskRouter.post('/', validateCreateTask, taskController.createTask);
-taskRouter.get('/', taskController.listTasks);
+taskRouter.get('/', validateListTasks, taskController.listTasks);
 
 export default taskRouter;
