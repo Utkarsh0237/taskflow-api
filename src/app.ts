@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import { taskRouter } from './routes/taskRoutes';
 
 export const app = express();
 
@@ -13,5 +14,8 @@ app.get('/health', (_req: Request, res: Response) => {
     timestamp: new Date().toISOString()
   });
 });
+
+// Task endpoints
+app.use('/tasks', taskRouter);
 
 export default app;

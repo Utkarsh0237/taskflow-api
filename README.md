@@ -105,4 +105,43 @@ npm run test:watch
     }
     ```
 
-*(Task management endpoints for task creation, listing, updating, and deletion are implemented via pull requests #1, #2, and #3).*
+### Tasks
+
+- **`POST /tasks`**
+  - **Description:** Creates a new task with validation and default values (`status: 'pending'`, `priority: 'medium'`).
+  - **Request Body:**
+    ```json
+    {
+      "title": "Build PR #1",
+      "description": "Implement task creation and listing",
+      "status": "pending",
+      "priority": "high"
+    }
+    ```
+  - **Success Response (201 Created):**
+    ```json
+    {
+      "id": "e4b3c9f2-...",
+      "title": "Build PR #1",
+      "description": "Implement task creation and listing",
+      "status": "pending",
+      "priority": "high",
+      "createdAt": "2026-10-16T12:00:00.000Z",
+      "updatedAt": "2026-10-16T12:00:00.000Z"
+    }
+    ```
+
+- **`GET /tasks`**
+  - **Description:** Lists tasks, optionally filtered by `status` or `priority`.
+  - **Query Parameters:**
+    - `status` (optional): `pending` | `in_progress` | `completed`
+    - `priority` (optional): `low` | `medium` | `high`
+  - **Success Response (200 OK):**
+    ```json
+    {
+      "tasks": [ ... ],
+      "count": 1
+    }
+    ```
+
+*(Task retrieval by ID, updating, deletion, and advanced hardening are implemented in subsequent PRs).*
