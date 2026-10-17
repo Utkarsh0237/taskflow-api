@@ -82,7 +82,7 @@ export function validateListTasks(req: Request, res: Response, next: NextFunctio
   next();
 }
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function validateTaskId(req: Request, res: Response, next: NextFunction): void {
   const { id } = req.params;
@@ -99,6 +99,14 @@ export function validateTaskId(req: Request, res: Response, next: NextFunction):
 }
 
 export function validateUpdateTask(req: Request, res: Response, next: NextFunction): void {
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    res.status(400).json({
+      error: 'ValidationError',
+      message: 'Request body must be a JSON object'
+    });
+    return;
+  }
+
   const { id, createdAt, updatedAt, title, description, status, priority } = req.body;
   const errors: string[] = [];
 

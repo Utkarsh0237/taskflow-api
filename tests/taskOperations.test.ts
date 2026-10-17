@@ -40,6 +40,15 @@ describe('Task Operations (PR #2: Retrieval, Updates, Deletion, Edge Cases)', ()
       expect(res.body.error).toBe('ValidationError');
       expect(res.body.message).toBe('Task ID must be a valid UUID v4 format');
     });
+
+    it('should return 400 when task ID is a valid UUID but not version 4 (e.g. UUID v1)', async () => {
+      // UUID v1 has version nibble 1
+      const uuidV1 = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
+      const res = await request(app).get(`/tasks/${uuidV1}`);
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('ValidationError');
+      expect(res.body.message).toBe('Task ID must be a valid UUID v4 format');
+    });
   });
 
   describe('PATCH /tasks/:id', () => {
@@ -56,7 +65,6 @@ describe('Task Operations (PR #2: Retrieval, Updates, Deletion, Edge Cases)', ()
       const taskId = createRes.body.id;
       const originalCreatedAt = createRes.body.createdAt;
 
-      // Small delay to ensure timestamp comparison difference if clock advances
       const res = await request(app)
         .patch(`/tasks/${taskId}`)
         .send({ title: 'Updated Title' });
@@ -69,6 +77,29 @@ describe('Task Operations (PR #2: Retrieval, Updates, Deletion, Edge Cases)', ()
       expect(res.body.priority).toBe('low');
       expect(res.body.createdAt).toBe(originalCreatedAt);
       expect(res.body).toHaveProperty('updatedAt');
+    });
+
+    it('should successfully clear description when description is null', async () => {
+      const createRes = await request(app)
+        .post('/tasks')
+        .send({
+          title: 'Task with Description',
+          description: 'To be cleared'
+        });
+
+      const taskId = createRes.body.id;
+
+      const res = await request(app)
+        .patch(`/tasks/${taskId}`)
+        .send({ description: null });
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(taskId);
+      expect(res.body.description).toBeUndefined();
+
+      // Verify persistent state via GET
+      const getRes = await request(app).get(`/tasks/${taskId}`);
+      expect(getRes.body.description).toBeUndefined();
     });
 
     it('should partially update status from pending to completed', async () => {
@@ -100,22 +131,52 @@ describe('Task Operations (PR #2: Retrieval, Updates, Deletion, Edge Cases)', ()
       expect(res.body.details).toContain('At least one field ("title", "description", "status", or "priority") must be provided for update.');
     });
 
-    it('should return 400 when attempting to mutate immutable system fields (id, createdAt, updatedAt)', async () => {
+    it('should return 400 and preserve task invariance when attempting to tamper with updatedAt or immutable fields', async () => {
+      const createRes = await request(app)
+        .post('/tasks')
+        .send({
+          title: 'Immutable Check Task',
+          description: 'Original Description',
+          status: 'pending'
+        });
+
+      const taskId = createRes.body.id;
+      const originalCreatedAt = createRes.body.createdAt;
+      const originalUpdatedAt = createRes.body.updatedAt;
+
+      // Attempt to tamper with updatedAt, id, and createdAt while also proposing a title change
+      const res = await request(app)
+        .patch(`/tasks/${taskId}`)
+        .send({
+          title: 'Sneaky Modified Title',
+          id: '00000000-0000-4000-8000-000000000000',
+          createdAt: '2020-01-01T00:00:00.000Z',
+          updatedAt: '2020-01-01T00:00:00.000Z'
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('ValidationError');
+      expect(res.body.details).toContain('Fields "id", "createdAt", and "updatedAt" are immutable and cannot be updated.');
+
+      // Invariance check: verify task was not partially modified in storage
+      const verifyRes = await request(app).get(`/tasks/${taskId}`);
+      expect(verifyRes.body.title).toBe('Immutable Check Task');
+      expect(verifyRes.body.createdAt).toBe(originalCreatedAt);
+      expect(verifyRes.body.updatedAt).toBe(originalUpdatedAt);
+    });
+
+    it('should return 400 when request body is an array instead of an object', async () => {
       const createRes = await request(app)
         .post('/tasks')
         .send({ title: 'Task' });
 
       const res = await request(app)
         .patch(`/tasks/${createRes.body.id}`)
-        .send({
-          title: 'New Title',
-          id: 'hacked-id',
-          createdAt: '2020-01-01T00:00:00.000Z'
-        });
+        .send([{ title: 'Invalid Array Payload' }]);
 
       expect(res.status).toBe(400);
       expect(res.body.error).toBe('ValidationError');
-      expect(res.body.details).toContain('Fields "id", "createdAt", and "updatedAt" are immutable and cannot be updated.');
+      expect(res.body.message).toBe('Request body must be a JSON object');
     });
 
     it('should return 400 when updating with an empty or whitespace title', async () => {

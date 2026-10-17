@@ -26,7 +26,7 @@ export interface TaskFilters {
 
 export interface UpdateTaskDTO {
   title?: string;
-  description?: string;
+  description?: string | null;
   status?: TaskStatus;
   priority?: TaskPriority;
 }

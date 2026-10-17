@@ -47,10 +47,17 @@ export const taskService = {
     }
 
     const existing = tasks[index];
+    let newDescription = existing.description;
+    if (dto.description === null) {
+      newDescription = undefined;
+    } else if (dto.description !== undefined) {
+      newDescription = dto.description.trim();
+    }
+
     const updated: Task = {
       ...existing,
       title: dto.title !== undefined ? dto.title.trim() : existing.title,
-      description: dto.description !== undefined ? dto.description.trim() : existing.description,
+      description: newDescription,
       status: dto.status !== undefined ? dto.status : existing.status,
       priority: dto.priority !== undefined ? dto.priority : existing.priority,
       updatedAt: new Date().toISOString()
