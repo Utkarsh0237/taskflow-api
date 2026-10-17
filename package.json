@@ -19,7 +19,8 @@
   "author": "Utkarsh Pandey",
   "license": "ISC",
   "dependencies": {
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "helmet": "^8.3.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",

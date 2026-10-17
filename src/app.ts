@@ -1,22 +1,20 @@
 import express, { Request, Response } from 'express';
+import helmet from 'helmet';
 import { taskRouter } from './routes/taskRoutes';
+import { errorHandler } from './middleware/errorHandler';
+import { notFoundHandler } from './middleware/notFoundHandler';
+import { defaultRateLimiter } from './middleware/rateLimiter';
 
 export const app = express();
 
-// Global middleware
-app.use(express.json());
+// Security headers with Helmet
+app.use(helmet());
 
-// Handle malformed JSON error from express.json()
-app.use((err: unknown, _req: Request, res: Response, next: express.NextFunction) => {
-  if (err instanceof SyntaxError && 'status' in err && (err as { status: number }).status === 400) {
-    res.status(400).json({
-      error: 'BadRequest',
-      message: 'Malformed JSON payload'
-    });
-    return;
-  }
-  next(err);
-});
+// Body parser with payload size limit (50kb)
+app.use(express.json({ limit: '50kb' }));
+
+// In-memory rate limiting
+app.use(defaultRateLimiter);
 
 // Health check endpoint
 app.get('/health', (_req: Request, res: Response) => {
@@ -27,7 +25,20 @@ app.get('/health', (_req: Request, res: Response) => {
   });
 });
 
+// Diagnostic test endpoint for verifying 500 error handling in test suite
+if (process.env.NODE_ENV === 'test') {
+  app.get('/_test/error', () => {
+    throw new Error('Simulated internal server failure');
+  });
+}
+
 // Task endpoints
 app.use('/tasks', taskRouter);
+
+// Catch-all for undefined routes (404 JSON response)
+app.use(notFoundHandler);
+
+// Centralized error handling middleware
+app.use(errorHandler);
 
 export default app;

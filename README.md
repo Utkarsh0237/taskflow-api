@@ -177,4 +177,14 @@ npm run test:watch
   - **Success Response (204 No Content)**
   - **Error Responses:** `400 Bad Request` (invalid UUID format), `404 Not Found` (task not found).
 
-*(Advanced security hardening, rate limiting, and centralized error handling are implemented in PR #3).*
+---
+
+## Security, Reliability & Error Handling
+
+- **Security Headers (Helmet):** Automatically configures HTTP protection headers (e.g. `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`) and strips identifying headers (`X-Powered-By`).
+- **Body Size Limiting:** Enforces a maximum request body size of **50kb** via `express.json({ limit: '50kb' })`, guarding against memory exhaustion and payload flood attacks (`413 PayloadTooLarge`).
+- **In-Memory Rate Limiting:** Sliding-window rate limiting per IP address attaching `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers. Exceeded rates return `429 Too Many Requests` with a `Retry-After` header.
+- **Centralized JSON Error Handling:**
+  - Undefined routes return structured JSON `404 Not Found` (`{ error: 'NotFound', message: 'Cannot GET /path' }`) rather than default HTML.
+  - Unexpected internal errors return clean `500 Internal Server Error` responses, preventing internal stack trace leaks to clients.
+- **Graceful Shutdown:** Handles `SIGTERM` and `SIGINT` signals, draining existing connections cleanly before process termination.
