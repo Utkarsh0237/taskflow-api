@@ -5,8 +5,14 @@ export function errorHandler(
   err: unknown,
   _req: Request,
   res: Response,
-  _next: NextFunction
+  next: NextFunction
 ): void {
+  // If response headers were already sent, delegate to Express default handler to close stream
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
+
   // 1. Handled operational application errors
   if (err instanceof AppError) {
     res.status(err.statusCode).json({
@@ -40,7 +46,23 @@ export function errorHandler(
     return;
   }
 
-  // 4. Catch-all for unexpected internal errors (prevent internal stack trace leakage)
+  // 4. Client 4xx errors passed from upstream libraries (e.g. 415 Unsupported Media Type)
+  if (
+    typeof err === 'object' &&
+    err !== null &&
+    (('status' in err && typeof (err as { status: number }).status === 'number' && (err as { status: number }).status >= 400 && (err as { status: number }).status < 500) ||
+     ('statusCode' in err && typeof (err as { statusCode: number }).statusCode === 'number' && (err as { statusCode: number }).statusCode >= 400 && (err as { statusCode: number }).statusCode < 500))
+  ) {
+    const statusCode = (err as { status?: number; statusCode?: number }).status || (err as { status?: number; statusCode?: number }).statusCode || 400;
+    const message = (err as { message?: string }).message || 'Client request error';
+    res.status(statusCode).json({
+      error: 'ClientError',
+      message
+    });
+    return;
+  }
+
+  // 5. Catch-all for unexpected internal errors (prevent internal stack trace leakage)
   console.error('Internal server error:', err);
   res.status(500).json({
     error: 'InternalServerError',

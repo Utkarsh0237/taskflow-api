@@ -4,17 +4,21 @@ import { taskRouter } from './routes/taskRoutes';
 import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFoundHandler';
 import { defaultRateLimiter } from './middleware/rateLimiter';
+import { BadRequestError } from './errors/AppError';
 
 export const app = express();
+
+// Trust reverse proxy (e.g. Nginx, Cloudflare, container ingress)
+app.set('trust proxy', 1);
 
 // Security headers with Helmet
 app.use(helmet());
 
+// In-memory rate limiting (Mounted BEFORE body parser so malformed/oversized requests are counted)
+app.use(defaultRateLimiter);
+
 // Body parser with payload size limit (50kb)
 app.use(express.json({ limit: '50kb' }));
-
-// In-memory rate limiting
-app.use(defaultRateLimiter);
 
 // Health check endpoint
 app.get('/health', (_req: Request, res: Response) => {
@@ -25,10 +29,14 @@ app.get('/health', (_req: Request, res: Response) => {
   });
 });
 
-// Diagnostic test endpoint for verifying 500 error handling in test suite
+// Diagnostic test endpoints for verifying error handling in test suite
 if (process.env.NODE_ENV === 'test') {
   app.get('/_test/error', () => {
     throw new Error('Simulated internal server failure');
+  });
+
+  app.get('/_test/app-error', () => {
+    throw new BadRequestError('Custom bad request', ['detail-1', 'detail-2']);
   });
 }
 

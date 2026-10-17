@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import { app } from '../src/app';
 import { createRateLimiter, resetRateLimits } from '../src/middleware/rateLimiter';
+import { handleShutdown } from '../src/server';
 
 describe('Security & Reliability (PR #3: Hardening, Headers, Limits, Errors)', () => {
   beforeEach(() => {
@@ -63,9 +64,20 @@ describe('Security & Reliability (PR #3: Hardening, Headers, Limits, Errors)', (
     });
   });
 
-  describe('Centralized 500 Error Handler', () => {
+  describe('Centralized Error Handler', () => {
+    it('should catch AppError operational exceptions and return structured JSON with details', async () => {
+      const res = await request(app).get('/_test/app-error');
+
+      expect(res.status).toBe(400);
+      expect(res.header['content-type']).toMatch(/application\/json/);
+      expect(res.body).toEqual({
+        error: 'BadRequestError',
+        message: 'Custom bad request',
+        details: ['detail-1', 'detail-2']
+      });
+    });
+
     it('should catch unexpected errors and return structured 500 without leaking stack traces', async () => {
-      // Temporarily suppress console.error during test
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       const res = await request(app).get('/_test/error');
@@ -83,18 +95,21 @@ describe('Security & Reliability (PR #3: Hardening, Headers, Limits, Errors)', (
   });
 
   describe('In-Memory Rate Limiting', () => {
-    it('should attach standard rate limit headers to requests', async () => {
-      const res = await request(app).get('/health');
+    it('should attach standard rate limit headers with accurate counts and decrements', async () => {
+      const res1 = await request(app).get('/health');
+      expect(res1.headers['x-ratelimit-limit']).toBe('100');
+      expect(res1.headers['x-ratelimit-remaining']).toBe('99');
+      expect(Number(res1.headers['x-ratelimit-reset'])).toBeGreaterThan(0);
 
-      expect(res.headers).toHaveProperty('x-ratelimit-limit');
-      expect(res.headers).toHaveProperty('x-ratelimit-remaining');
-      expect(res.headers).toHaveProperty('x-ratelimit-reset');
+      const res2 = await request(app).get('/health');
+      expect(res2.headers['x-ratelimit-limit']).toBe('100');
+      expect(res2.headers['x-ratelimit-remaining']).toBe('98');
     });
 
-    it('should reject requests with 429 when custom rate limit threshold is exceeded', async () => {
+    it('should reject requests with 429 when rate limit threshold is exceeded and provide valid Retry-After', async () => {
       const customApp = express();
       const testLimiter = createRateLimiter({
-        windowMs: 10 * 1000,
+        windowMs: 5 * 1000,
         maxRequests: 2
       });
 
@@ -115,7 +130,51 @@ describe('Security & Reliability (PR #3: Hardening, Headers, Limits, Errors)', (
         error: 'TooManyRequests',
         message: 'Too many requests. Please try again later.'
       });
-      expect(res3.headers).toHaveProperty('retry-after');
+
+      const retryAfter = Number(res3.headers['retry-after']);
+      expect(retryAfter).toBeGreaterThanOrEqual(1);
+      expect(retryAfter).toBeLessThanOrEqual(5);
+    });
+  });
+
+  describe('Graceful Shutdown', () => {
+    it('should close idle connections, close server, and exit cleanly with code 0 on SIGTERM', () => {
+      const mockServer = {
+        close: vi.fn((cb?: (err?: Error) => void) => {
+          if (cb) cb();
+        }),
+        closeIdleConnections: vi.fn()
+      };
+
+      const mockExit = vi.fn();
+      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      handleShutdown(mockServer, 'SIGTERM', { exitFn: mockExit, timeoutMs: 1000 });
+
+      expect(mockServer.closeIdleConnections).toHaveBeenCalled();
+      expect(mockServer.close).toHaveBeenCalled();
+      expect(mockExit).toHaveBeenCalledWith(0);
+
+      consoleLogSpy.mockRestore();
+    });
+
+    it('should exit with code 1 if server.close returns an error', () => {
+      const mockServer = {
+        close: vi.fn((cb?: (err?: Error) => void) => {
+          if (cb) cb(new Error('Close error'));
+        }),
+        closeIdleConnections: vi.fn()
+      };
+
+      const mockExit = vi.fn();
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      handleShutdown(mockServer, 'SIGINT', { exitFn: mockExit, timeoutMs: 1000 });
+
+      expect(mockServer.close).toHaveBeenCalled();
+      expect(mockExit).toHaveBeenCalledWith(1);
+
+      consoleErrorSpy.mockRestore();
     });
   });
 });
