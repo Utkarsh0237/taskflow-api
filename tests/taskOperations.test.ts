@@ -52,7 +52,7 @@ describe('Task Operations (PR #2: Retrieval, Updates, Deletion, Edge Cases)', ()
   });
 
   describe('PATCH /tasks/:id', () => {
-    it('should partially update the title without affecting other fields', async () => {
+    it('should partially update the title without affecting other fields and refresh updatedAt', async () => {
       const createRes = await request(app)
         .post('/tasks')
         .send({
@@ -64,6 +64,10 @@ describe('Task Operations (PR #2: Retrieval, Updates, Deletion, Edge Cases)', ()
 
       const taskId = createRes.body.id;
       const originalCreatedAt = createRes.body.createdAt;
+      const originalUpdatedAt = createRes.body.updatedAt;
+
+      // Short delay to ensure distinct timestamp on update
+      await new Promise(resolve => setTimeout(resolve, 15));
 
       const res = await request(app)
         .patch(`/tasks/${taskId}`)
@@ -76,7 +80,7 @@ describe('Task Operations (PR #2: Retrieval, Updates, Deletion, Edge Cases)', ()
       expect(res.body.status).toBe('pending');
       expect(res.body.priority).toBe('low');
       expect(res.body.createdAt).toBe(originalCreatedAt);
-      expect(res.body).toHaveProperty('updatedAt');
+      expect(new Date(res.body.updatedAt).getTime()).toBeGreaterThan(new Date(originalUpdatedAt).getTime());
     });
 
     it('should successfully clear description when description is null', async () => {
