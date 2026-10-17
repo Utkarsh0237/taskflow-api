@@ -38,10 +38,33 @@ export function createRateLimiter(options: RateLimiterOptions = {}): RateLimiter
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const now = Date.now();
 
-    // Map size protection: if capacity exceeded, purge oldest keys
+    // Map size protection: evict only expired entries, and fail-closed if completely saturated with active clients
     if (ipRequests.size >= maxStoredIps && !ipRequests.has(ip)) {
-      const oldestKey = ipRequests.keys().next().value;
-      if (oldestKey) ipRequests.delete(oldestKey);
+      for (const [existingIp, existingTimestamps] of ipRequests.entries()) {
+        const stillActive = existingTimestamps.filter(t => now - t < windowMs);
+        if (stillActive.length === 0) {
+          ipRequests.delete(existingIp);
+          break;
+        } else {
+          ipRequests.set(existingIp, stillActive);
+        }
+      }
+
+      // If map is still full of active clients, fail closed so existing clients cannot have their limits wiped out
+      if (ipRequests.size >= maxStoredIps && !ipRequests.has(ip)) {
+        const retryAfterSeconds = Math.max(1, Math.ceil(windowMs / 1000));
+        res.setHeader('Retry-After', retryAfterSeconds);
+        res.setHeader('X-RateLimit-Limit', maxRequests);
+        res.setHeader('X-RateLimit-Remaining', 0);
+        res.setHeader('X-RateLimit-Reset', Math.ceil((now + windowMs) / 1000));
+
+        res.status(429).json({
+          error: 'TooManyRequests',
+          message: 'Rate limit capacity reached. Please try again later.',
+          retryAfter: retryAfterSeconds
+        });
+        return;
+      }
     }
 
     const timestamps = ipRequests.get(ip) || [];

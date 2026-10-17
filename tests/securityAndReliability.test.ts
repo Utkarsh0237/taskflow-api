@@ -135,6 +135,33 @@ describe('Security & Reliability (PR #3: Hardening, Headers, Limits, Errors)', (
       expect(retryAfter).toBeGreaterThanOrEqual(1);
       expect(retryAfter).toBeLessThanOrEqual(5);
     });
+
+    it('should fail closed when map is completely saturated with active IPs rather than resetting limits', async () => {
+      const customApp = express();
+      customApp.set('trust proxy', true);
+      const testLimiter = createRateLimiter({
+        windowMs: 60 * 1000,
+        maxRequests: 5,
+        maxStoredIps: 2
+      });
+
+      customApp.use(testLimiter);
+      customApp.get('/test', (_req, res) => res.json({ ok: true }));
+
+      // Fill up capacity with 2 distinct active IPs
+      await request(customApp).get('/test').set('X-Forwarded-For', '1.1.1.1');
+      await request(customApp).get('/test').set('X-Forwarded-For', '2.2.2.2');
+
+      // 3rd new IP while 1 and 2 are active should fail closed with 429
+      const res3 = await request(customApp).get('/test').set('X-Forwarded-For', '3.3.3.3');
+      expect(res3.status).toBe(429);
+      expect(res3.body.message).toContain('Rate limit capacity reached');
+
+      // Crucial: verify 1.1.1.1 was NOT evicted or reset; its request count continues to increment
+      const res1Again = await request(customApp).get('/test').set('X-Forwarded-For', '1.1.1.1');
+      expect(res1Again.status).toBe(200);
+      expect(res1Again.headers['x-ratelimit-remaining']).toBe('3');
+    });
   });
 
   describe('Graceful Shutdown', () => {
