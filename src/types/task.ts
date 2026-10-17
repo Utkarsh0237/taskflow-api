@@ -23,3 +23,10 @@ export interface TaskFilters {
   status?: TaskStatus;
   priority?: TaskPriority;
 }
+
+export interface UpdateTaskDTO {
+  title?: string;
+  description?: string | null;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+}

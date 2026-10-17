@@ -144,4 +144,37 @@ npm run test:watch
     }
     ```
 
-*(Task retrieval by ID, updating, deletion, and advanced hardening are implemented in subsequent PRs).*
+- **`GET /tasks/:id`**
+  - **Description:** Retrieves a specific task by its UUID.
+  - **Success Response (200 OK):**
+    ```json
+    {
+      "id": "e4b3c9f2-...",
+      "title": "Build PR #1",
+      "description": "Implement task creation and listing",
+      "status": "pending",
+      "priority": "high",
+      "createdAt": "2026-10-16T12:00:00.000Z",
+      "updatedAt": "2026-10-16T12:00:00.000Z"
+    }
+    ```
+  - **Error Responses:** `400 Bad Request` (invalid UUID format), `404 Not Found` (task not found).
+
+- **`PATCH /tasks/:id`**
+  - **Description:** Partially updates an existing task. Fields `id`, `createdAt`, and `updatedAt` are immutable.
+  - **Request Body (at least one field required):**
+    ```json
+    {
+      "title": "Updated Task Title",
+      "status": "completed"
+    }
+    ```
+  - **Success Response (200 OK):** Returns updated task with refreshed `updatedAt` timestamp.
+  - **Error Responses:** `400 Bad Request` (validation failure, no fields provided, or tampering with immutable fields), `404 Not Found` (task not found).
+
+- **`DELETE /tasks/:id`**
+  - **Description:** Deletes a task by its UUID.
+  - **Success Response (204 No Content)**
+  - **Error Responses:** `400 Bad Request` (invalid UUID format), `404 Not Found` (task not found).
+
+*(Advanced security hardening, rate limiting, and centralized error handling are implemented in PR #3).*
