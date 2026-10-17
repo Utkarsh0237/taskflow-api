@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { Task, CreateTaskDTO, TaskFilters } from '../types/task';
+import { Task, CreateTaskDTO, TaskFilters, UpdateTaskDTO } from '../types/task';
 
 // In-memory data store for tasks
 let tasks: Task[] = [];
@@ -33,6 +33,41 @@ export const taskService = {
     }
 
     return result;
+  },
+
+  getTaskById(id: string): Task | null {
+    const task = tasks.find(t => t.id === id);
+    return task ? { ...task } : null;
+  },
+
+  updateTask(id: string, dto: UpdateTaskDTO): Task | null {
+    const index = tasks.findIndex(t => t.id === id);
+    if (index === -1) {
+      return null;
+    }
+
+    const existing = tasks[index];
+    const updated: Task = {
+      ...existing,
+      title: dto.title !== undefined ? dto.title.trim() : existing.title,
+      description: dto.description !== undefined ? dto.description.trim() : existing.description,
+      status: dto.status !== undefined ? dto.status : existing.status,
+      priority: dto.priority !== undefined ? dto.priority : existing.priority,
+      updatedAt: new Date().toISOString()
+    };
+
+    tasks[index] = updated;
+    return { ...updated };
+  },
+
+  deleteTask(id: string): boolean {
+    const index = tasks.findIndex(t => t.id === id);
+    if (index === -1) {
+      return false;
+    }
+
+    tasks.splice(index, 1);
+    return true;
   },
 
   // Helper method for testing isolation
